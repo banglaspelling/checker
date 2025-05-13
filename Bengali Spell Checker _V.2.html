@@ -1,0 +1,341 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bengali Spell Checker</title>
+    <link href="./src/output.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Tooltip styling */
+        .tooltip {
+            position: absolute;
+            background-color: #e2e8f0; /* Tailwind bg-slate-100 */
+            color: #2dd4bf; /* Tailwind text-teal-600 */
+            padding: 6px 10px;
+            border-radius: 4px;
+            white-space: nowrap;
+            z-index: 1000; /* Ensure clickable */
+            font-size: 1.1rem; /* Enlarged font size */
+        }
+        /* Fallback for red color */
+        .misspelled {
+            color: red;
+        }
+        /* Blinking notice animation */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .blink {
+            animation: blink 2s infinite;
+            color: red; /* Fallback */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-r from-blue-100 to-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-xl shadow-xl w-full max-w-4xl">
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-4">Bengali Spell Checker</h1>
+        <div id="notice" class="blink bg-blue-100 border border-blue-300 text-red-600 p-4 rounded-md mb-6 text-center">
+            Upload a dictionary and enter text to start spell checking!
+        </div>
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Upload Dictionary (Excel)</label>
+            <input type="file" id="dictionaryFile" accept=".xlsx" class="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+        </div>
+        <textarea id="inputText" class="w-full h-[640px] max-h-[640px] p-3 border border-gray-300 rounded-md mb-6 resize-y focus:ring-2 focus:ring-blue-500" placeholder="Enter Bengali text here..."></textarea>
+        <button id="checkButton" class="w-full bg-blue-600 text-white p-3 rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400" disabled>Check Spelling</button>
+        <div id="results" class="mt-6 text-lg"></div>
+    </div>
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+            return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+                try {
+                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                    var firstSheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[firstSheetName];
+                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                    var filteredData = jsonData.filter(row => row.some(filledCell));
+                    var headerRowIndex = filteredData.findIndex((row, index) =>
+                        row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                    );
+                    if (headerRowIndex === -1 || headerRowIndex > 25) {
+                        headerRowIndex = 0;
+                    }
+                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                    return csv;
+                } catch (e) {
+                    console.error(e);
+                    return "";
+                }
+            }
+            return gk_fileData[filename] || "";
+        }
+    </script>
+    <script>
+        // Trie Node
+        class TrieNode {
+            constructor() {
+                this.children = {};
+                this.isEnd = false;
+            }
+        }
+
+        // Trie for dictionary
+        class Trie {
+            constructor() {
+                this.root = new TrieNode();
+            }
+
+            insert(word) {
+                let node = this.root;
+                for (const char of word) {
+                    if (!node.children[char]) {
+                        node.children[char] = new TrieNode();
+                    }
+                    node = node.children[char];
+                }
+                node.isEnd = true;
+            }
+
+            search(word) {
+                let node = this.root;
+                for (const char of word) {
+                    if (!node.children[char]) {
+                        return false;
+                    }
+                    node = node.children[char];
+                }
+                return node.isEnd;
+            }
+
+            getSuggestions(prefix, maxSuggestions = 3) {
+                const suggestions = [];
+                let node = this.root;
+
+                for (const char of prefix) {
+                    if (!node.children[char]) {
+                        return suggestions;
+                    }
+                    node = node.children[char];
+                }
+
+                this.collectWords(node, prefix, suggestions, maxSuggestions);
+                return suggestions;
+            }
+
+            collectWords(node, prefix, suggestions, maxSuggestions) {
+                if (suggestions.length >= maxSuggestions) {
+                    return;
+                }
+                if (node.isEnd) {
+                    suggestions.push(prefix);
+                }
+                for (const char in node.children) {
+                    this.collectWords(node.children[char], prefix + char, suggestions, maxSuggestions);
+                }
+            }
+        }
+
+        // Morphological rules
+        const suffixes = ["রা", "ে", "তে", "র", "কে"];
+
+        function applyMorphologicalRules(word) {
+            const variants = [word];
+            for (const suffix of suffixes) {
+                if (word.endsWith(suffix)) {
+                    variants.push(word.slice(0, -suffix.length));
+                } else {
+                    variants.push(word + suffix);
+                }
+            }
+            return variants;
+        }
+
+        // Levenshtein distance
+        function levenshtein(a, b) {
+            const matrix = Array(b.length + 1).fill().map(() => Array(a.length + 1).fill(0));
+            for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
+            for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
+            for (let j = 1; j <= b.length; j++) {
+                for (let i = 1; i <= a.length; i++) {
+                    const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+                    matrix[j][i] = Math.min(
+                        matrix[j][i - 1] + 1,
+                        matrix[j - 1][i] + 1,
+                        matrix[j - 1][i - 1] + indicator
+                    );
+                }
+            }
+            return matrix[b.length][a.length];
+        }
+
+        // Dictionary and Trie
+        let dictionary = [];
+        const trie = new Trie();
+
+        // Load dictionary
+        document.getElementById("dictionaryFile").addEventListener("change", (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: "array" });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                dictionary = rows.flat().map(String).filter(word => /^[\u0980-\u09FF]+$/.test(word));
+                dictionary.forEach(word => trie.insert(word.toLowerCase()));
+                document.getElementById("checkButton").disabled = false;
+                document.getElementById("results").innerHTML = `<span class="text-green-600">Dictionary loaded with ${dictionary.length} words.</span>`;
+                console.log("Dictionary loaded:", dictionary.length); // Debug log
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // Spell check function
+        function spellCheck(text) {
+            const tokens = text.split(/([\s।,!?]+)/).filter(t => t.length > 0);
+            let results = [];
+
+            for (const token of tokens) {
+                if (/^[\u0980-\u09FF]+$/.test(token)) {
+                    const lowerToken = token.toLowerCase();
+                    const variants = applyMorphologicalRules(lowerToken);
+
+                    if (variants.some(v => trie.search(v))) {
+                        results.push(token);
+                    } else {
+                        const suggestions = trie.getSuggestions(lowerToken.slice(0, Math.max(1, lowerToken.length - 2)));
+                        if (suggestions.length === 0) {
+                            for (const dictWord of dictionary) {
+                                if (levenshtein(lowerToken, dictWord.toLowerCase()) <= 2) {
+                                    suggestions.push(dictWord);
+                                }
+                            }
+                        }
+                        if (suggestions.length > 0) {
+                            const suggestionText = suggestions.join(",");
+                            results.push(`<span class="text-red-600 misspelled" data-suggestions="${suggestionText}" data-word="${encodeURIComponent(token)}">${token}</span>`);
+                        } else {
+                            results.push(`<span class="text-red-600">${token}</span>`);
+                        }
+                    }
+                } else {
+                    results.push(token);
+                }
+            }
+
+            const output = results.join("");
+            console.log("SpellCheck Output:", output); // Debug log
+            return output;
+        }
+
+        // Replace word
+        function replaceWord(original, replacement) {
+            console.log("Replacing:", decodeURIComponent(original), "with:", replacement); // Debug log
+            const textarea = document.getElementById("inputText");
+            const regex = new RegExp(`\\b${decodeURIComponent(original)}\\b`, "g");
+            textarea.value = textarea.value.replace(regex, replacement);
+            document.getElementById("results").innerHTML = spellCheck(textarea.value);
+        }
+
+        // Event listener
+        document.getElementById("checkButton").addEventListener("click", () => {
+            const inputText = document.getElementById("inputText").value;
+            const resultsDiv = document.getElementById("results");
+            resultsDiv.innerHTML = `<div>${spellCheck(inputText)}</div>`; // Wrap in div to ensure HTML parsing
+
+            // Remove existing event listeners to prevent duplicates
+            document.querySelectorAll(".misspelled").forEach(span => {
+                span.replaceWith(span.cloneNode(true)); // Clone to remove listeners
+            });
+
+            document.querySelectorAll(".misspelled").forEach(span => {
+                const word = decodeURIComponent(span.dataset.word);
+                const suggestions = span.dataset.suggestions.split(",");
+
+                span.addEventListener("mouseenter", (e) => {
+                    const rect = span.getBoundingClientRect();
+                    const tooltip = document.createElement("div");
+                    tooltip.className = "tooltip";
+                    tooltip.style.top = `${rect.bottom + 5}px`;
+                    tooltip.style.left = `${rect.left}px`;
+                    tooltip.innerHTML = suggestions
+                        .map(s => `<a href="#" class="suggestion text-teal-600 hover:text-teal-800 hover:underline" data-replace="${s}">${s}</a>`)
+                        .join(", ");
+
+                    document.body.appendChild(tooltip);
+
+                    tooltip.querySelectorAll(".suggestion").forEach(link => {
+                        link.addEventListener("click", (e) => {
+                            e.preventDefault();
+                            console.log("Suggestion clicked:", link.dataset.replace); // Debug log
+                            replaceWord(encodeURIComponent(word), link.dataset.replace);
+                            document.body.removeChild(tooltip);
+                        });
+                    });
+                });
+
+                span.addEventListener("mouseleave", () => {
+                    const tooltip = document.querySelector(".tooltip");
+                    if (tooltip) {
+                        document.body.removeChild(tooltip);
+                    }
+                });
+            });
+        });
+
+        // Log notice display
+        console.log("Notice displayed: Upload a dictionary and enter text to start spell checking!");
+    </script>
+</body>
+</html>
