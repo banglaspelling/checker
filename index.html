@@ -354,5 +354,54 @@ document.getElementById("loadDefault").addEventListener("click", () => {
 });
 </script>
 
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const checkButton = document.getElementById("checkButton");
+    checkButton.addEventListener("click", () => {
+        const inputText = document.getElementById("inputText").value;
+        const resultsDiv = document.getElementById("results");
+        resultsDiv.innerHTML = `<div>${spellCheck(inputText)}</div>`;
+
+        document.querySelectorAll(".misspelled").forEach(span => {
+            span.replaceWith(span.cloneNode(true));
+        });
+
+        document.querySelectorAll(".misspelled").forEach(span => {
+            const word = decodeURIComponent(span.dataset.word);
+            const suggestions = span.dataset.suggestions.split(",");
+
+            span.addEventListener("mouseenter", () => {
+                const rect = span.getBoundingClientRect();
+                const tooltip = document.createElement("div");
+                tooltip.className = "tooltip";
+                tooltip.style.top = `${rect.bottom + 5}px`;
+                tooltip.style.left = `${rect.left}px`;
+                tooltip.innerHTML = suggestions
+                    .map(s => `<a href="#" class="suggestion text-teal-600 hover:text-teal-800 hover:underline" data-replace="${s}">${s}</a>`)
+                    .join(", ");
+
+                document.body.appendChild(tooltip);
+
+                tooltip.querySelectorAll(".suggestion").forEach(link => {
+                    link.addEventListener("click", (e) => {
+                        e.preventDefault();
+                        replaceWord(encodeURIComponent(word), link.dataset.replace);
+                        document.body.removeChild(tooltip);
+                    });
+                });
+            });
+
+            span.addEventListener("mouseleave", () => {
+                const tooltip = document.querySelector(".tooltip");
+                if (tooltip) {
+                    document.body.removeChild(tooltip);
+                }
+            });
+        });
+    });
+});
+</script>
+
 </body>
 </html>
